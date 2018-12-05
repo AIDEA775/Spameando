@@ -29,7 +29,7 @@ async def mayus_handler(event):
     for c in msg:
         print(c)
         await client.send_message(user, c)
-    logging.info('Spammed mayus to ', user)
+    logging.info(f'Spammed mayus to {user}')
 
 @client.on(events.NewMessage(chats='me', pattern='^spam (\w+) colum (\d+) (.*$)'))
 async def colum_handler(event):
@@ -39,7 +39,7 @@ async def colum_handler(event):
     formated = '\n'.join([msg[i:i+n] for i in range(0, len(msg), n)])
     await client.send_message(user, formated)
     
-    logging.info('Spammed colum to ', user)
+    logging.info(f'Spammed colum to {user}')
 
 @client.on(events.NewMessage(chats='me', pattern='^spam (\w+) del (\d+) (.*$)'))
 async def del_handler(event):
@@ -67,7 +67,7 @@ async def del_handler(event):
     await event.delete()
 
 @client.on(events.NewMessage(chats='me', pattern='^spam (\w+) edit (\d+) (.*) by (.*$)'))
-async def del_handler(event):
+async def edit_handler(event):
     user = event.pattern_match.group(1)
     time = int(event.pattern_match.group(2))
     msg = event.pattern_match.group(3)
@@ -94,7 +94,7 @@ async def del_handler(event):
 
 
 @client.on(events.NewMessage(chats='me', pattern='^spam (\w+) repeat (\d+) (.*)'))
-async def del_handler(event):
+async def repeat_handler(event):
     user = event.pattern_match.group(1)
     seg = int(event.pattern_match.group(2))
     msg = event.pattern_match.group(3)
@@ -106,7 +106,7 @@ async def del_handler(event):
     logging.info(f'Spammed repeat to {user}')
 
 @client.on(events.NewMessage(chats='me', pattern='^spam (\w+) at (\d+):(\d+) (.*)'))
-async def del_handler(event):
+async def at_handler(event):
     user = event.pattern_match.group(1)
     hour = event.pattern_match.group(2)
     minu = event.pattern_match.group(3)
@@ -117,6 +117,7 @@ async def del_handler(event):
         logging.info(f'Spammed at to {user}')
     
     crons.append(aiocron.crontab(f'{minu} {hour} * * *', func=send))
+    logging.info(f'Added cron at {hour}:{minu}')
 
 @client.on(events.NewMessage(chats='me', pattern='^spam stop'))
 async def del_handler(event):
