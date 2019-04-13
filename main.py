@@ -18,13 +18,10 @@ api_hash = config['API']['hash']
 user_num = config['USER']['number']
 user_pass = config['USER']['password']
 
-proxy = None
-#proxy = (socks.HTTP, 'proxy.server', 3128) # For deploy in PythonAnyWhere.com
-
 callbacks = []
 crons = []
 
-client = TelegramClient('Spameando', api_id, api_hash, proxy=proxy)
+client = TelegramClient('Spameando', api_id, api_hash)
 client.start(user_num, user_pass)
 
 log = client.send_message('me', "Spameando init... OK\n\n$")
