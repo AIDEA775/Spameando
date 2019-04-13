@@ -1,5 +1,6 @@
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events ,sync
 from time import sleep
+from functools import partial
 import configparser
 import time
 import aiocron, asyncio
@@ -16,12 +17,38 @@ api_hash = config['API']['hash']
 user_num = config['USER']['number']
 user_pass = config['USER']['password']
 
+callbacks = []
 crons = []
 
 client = TelegramClient('Spameando', api_id, api_hash)
 client.start(user_num, user_pass)
 
-@client.on(events.NewMessage(chats='me', pattern='^spam (\w+) mayus (.*$)'))
+log = client.send_message('me', "Spameando init... OK\n\n$")
+
+
+async def responseLog(event, msg):
+    global log
+    newlog = f"{log.message} {event.message.message}\n{msg}\n\n$"
+    await event.delete()
+    log = await log.edit(newlog)
+
+
+async def send(user, msg):
+    await client.send_message(user, msg)
+    logging.info(f'Send "{msg}" to {user}')
+
+
+@client.on(events.NewMessage(chats='me', pattern='^spam status'))
+async def status_handler(event):
+    await responseLog(event, "I'm here")
+
+
+@client.on(events.NewMessage(chats='me', pattern='^spam help'))
+async def help_handler(event):
+    await responseLog(event, "Help is Work In Progress bro :)")
+
+
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) mayus (.*$)'))
 async def mayus_handler(event):
     user = event.pattern_match.group(1)
     msg = event.pattern_match.group(2).replace(' ', '').upper()
@@ -29,19 +56,27 @@ async def mayus_handler(event):
     for c in msg:
         print(c)
         await client.send_message(user, c)
-    logging.info(f'Spammed mayus to {user}')
+    await responseLog(event, f'Spammed mayus to {user}')
 
-@client.on(events.NewMessage(chats='me', pattern='^spam (\w+) colum (\d+) (.*$)'))
+
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) colum (\d+) (.*$)'))
 async def colum_handler(event):
     user = event.pattern_match.group(1)
     n = int(event.pattern_match.group(2))
     msg = event.pattern_match.group(3).upper()
     formated = '\n'.join([msg[i:i+n] for i in range(0, len(msg), n)])
     await client.send_message(user, formated)
-    
-    logging.info(f'Spammed colum to {user}')
+    await responseLog(event, f'Spammed colum to {user}')
 
-@client.on(events.NewMessage(chats='me', pattern='^spam (\w+) del (\d+) (.*$)'))
+
+########### REFACTOR THIS
+async def del_callback_handler(time, send, event):
+        sleep(time)
+        await send.delete()
+        client.remove_event_handler(del_callback_handler)
+        await client.catch_up()
+
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) del (\d+) (.*$)'))
 async def del_handler(event):
     user = event.pattern_match.group(1)
     time = int(event.pattern_match.group(2))
@@ -49,24 +84,20 @@ async def del_handler(event):
 
     send = await client.send_message(user, msg)
 
-    async def del_callback_handler(event):
-        logging.info(f'Activated MessageRead callback: {msg}')
+    c = partial(del_callback_handler, time, send)
+    callbacks.append(c)
+    client.add_event_handler(c, events.MessageRead(chats=user))
+    responseLog(event, 'Added MessageRead callback for del')
 
+
+########### REFACTOR THIS
+async def edit_callback_handler(time, new, send, event):
         sleep(time)
-        await send.delete()
-        logging.info(f'Spammed del to {user} after {time}s')
-        
-        client.remove_event_handler(del_callback_handler)
-        logging.info('Removed MessageRead callback')
-        
-        # Call other callbacks if any
+        await send.edit(new)
+        client.remove_event_handler(edit_callback_handler)
         await client.catch_up()
 
-    client.add_event_handler(del_callback_handler, events.MessageRead(chats=user))
-    logging.info('Added MessageRead callback')
-    await event.delete()
-
-@client.on(events.NewMessage(chats='me', pattern='^spam (\w+) edit (\d+) (.*) by (.*$)'))
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) edit (\d+) (.*) by (.*$)'))
 async def edit_handler(event):
     user = event.pattern_match.group(1)
     time = int(event.pattern_match.group(2))
@@ -75,57 +106,79 @@ async def edit_handler(event):
 
     send = await client.send_message(user, msg)
 
-    async def del_callback_handler(event):
-        logging.info(f'Activated MessageRead callback: {msg} -> {new}')
-
-        sleep(time)
-        await send.edit(new)
-        logging.info(f'Spammed edit to {user} after {time}s')
-        
-        client.remove_event_handler(del_callback_handler)
-        logging.info('Removed MessageRead callback')
-        
-        # Call other callbacks if any
-        await client.catch_up()
-
-    client.add_event_handler(del_callback_handler, events.MessageRead(chats=user))
-    logging.info('Added MessageRead callback')
-    await event.delete()
+    c = partial(edit_callback_handler, time, new, send)
+    callbacks.append(c)
+    client.add_event_handler(c, events.MessageRead(chats=user))
+    responseLog(event, 'Added MessageRead callback for edit')
 
 
-@client.on(events.NewMessage(chats='me', pattern='^spam (\w+) repeat (\d+) (.*)'))
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) repeat (\d+) (.*)'))
 async def repeat_handler(event):
     user = event.pattern_match.group(1)
     seg = int(event.pattern_match.group(2))
     msg = event.pattern_match.group(3)
 
-    async def send(): 
-        await client.send_message(user, msg)
+    c = partial(send, user, msg)
+    task = aiocron.crontab(f'* * * * * */{seg}', func=c)
+    crons.append(task)
     
-    crons.append(aiocron.crontab(f'* * * * * */{seg}', func=send))
-    logging.info(f'Spammed repeat to {user}')
+    responseLog(event, f'Spammed repeat to {user}')
 
-@client.on(events.NewMessage(chats='me', pattern='^spam (\w+) at (\d+):(\d+) (.*)'))
+
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) at (\d+):(\d+) (.*)'))
 async def at_handler(event):
     user = event.pattern_match.group(1)
     hour = event.pattern_match.group(2)
     minu = event.pattern_match.group(3)
     msg = event.pattern_match.group(4)
-
-    async def send(): 
-        await client.send_message(user, msg)
-        logging.info(f'Spammed at to {user}')
     
-    crons.append(aiocron.crontab(f'{minu} {hour} * * *', func=send))
-    logging.info(f'Added cron at {hour}:{minu}')
+    c = partial(send, user, msg)
+    task = aiocron.crontab(f'{minu} {hour} * * *', func=c)
+    crons.append(task)
+    responseLog(event, f'Added cron at {hour}:{minu} to {user}')
+
+
+async def say_callback_handler(user, msg, event):
+    await client.send_message(user, msg)
+
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) say (.*$)'))
+async def say_handler(event):
+    user = event.pattern_match.group(1)
+    msg = event.pattern_match.group(2)
+    
+    c = partial(say_callback_handler, user, msg)
+    callbacks.append(c)
+
+    client.add_event_handler(c, events.NewMessage(chats=user))
+    await responseLog(event, f'Say "{msg}" always to {user}')
+
+
+async def mimo_callback_handler(user, event):
+    await client.send_message(user, event.message.message)
+
+@client.on(events.NewMessage(chats='me', pattern=r'^spam (\w+) mimo'))
+async def mimo_handler(event):
+    user = event.pattern_match.group(1)
+    c = partial(mimo_callback_handler, user)
+    callbacks.append(c)
+
+    client.add_event_handler(c, events.NewMessage(chats=user))
+    await responseLog(event, f"Set mimo to {user}")
+
 
 @client.on(events.NewMessage(chats='me', pattern='^spam stop'))
-async def del_handler(event):
+async def stop_handler(event):
     for c in crons:
         c.stop()
     logging.info('Stopped all crons')
 
+    for c in callbacks:
+        client.remove_event_handler(c)
+    logging.info('Stopped others events handlers')
+
+    await responseLog(event, "Stopped all")
+
+
 logging.info('Start!')
 client.run_until_disconnected()
 logging.info('Stopped!')
-
